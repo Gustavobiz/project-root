@@ -1,0 +1,25 @@
+syntax = "proto3";
+package log;
+
+message LogEntry {
+  int32 index = 1;
+  int32 term = 2;
+  string command = 3;
+}
+
+message AppendRequest {
+  int32 term = 1;
+  string leaderId = 2;
+  repeated LogEntry entries = 3;
+  int32 leaderCommit = 4;
+}
+
+message AppendReply {
+  int32 term = 1;
+  bool success = 2;
+  int32 matchIndex = 3;
+}
+
+service ReplicatedLog {
+  rpc AppendEntries(AppendRequest) returns (AppendReply);
+}

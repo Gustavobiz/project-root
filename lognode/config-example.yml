@@ -1,0 +1,5 @@
+role: follower
+transport: http # http | udp | grpc
+port: 5000
+gateway: http://localhost:8080
+nodeId: nodeA

@@ -1,0 +1,3 @@
+port: 8080
+heartbeat_interval_ms: 2000
+heartbeat_retries: 2
