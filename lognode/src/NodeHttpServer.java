@@ -186,14 +186,12 @@ server.createContext("/append", new HttpHandler() {
 });
 
 //troca role em tempo de execução (teste)
+// POST /becomeLeader  promove este no a lider
 server.createContext("/becomeLeader", new HttpHandler() {
     @Override public void handle(HttpExchange ex) {
         try {
-            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
-                sendJson(ex, 405, "{\"error\":\"method not allowed\"}");
-                return;
-            }
-            cfg.setRole("leader");  // implemente setRole no NodeConfig se não existir
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex,405,"{\"error\":\"method not allowed\"}"); return; }
+            cfg.setRole("leader");
             sendJson(ex, 200, "{\"ok\":true,\"role\":\"leader\"}");
             System.out.println(">>> PROMOTED to LEADER (port="+cfg.port+", id="+cfg.nodeId+")");
         } catch (Exception e) {
@@ -201,6 +199,21 @@ server.createContext("/becomeLeader", new HttpHandler() {
         }
     }
 });
+
+// POST /becomeFollower  força este no a follower
+server.createContext("/becomeFollower", new HttpHandler() {
+    @Override public void handle(HttpExchange ex) {
+        try {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) { sendJson(ex,405,"{\"error\":\"method not allowed\"}"); return; }
+            cfg.setRole("follower");
+            sendJson(ex, 200, "{\"ok\":true,\"role\":\"follower\"}");
+            System.out.println(">>> DEMOTED to FOLLOWER (port="+cfg.port+", id="+cfg.nodeId+")");
+        } catch (Exception e) {
+            sendJson(ex, 500, "{\"error\":\""+e.getMessage()+"\"}");
+        }
+    }
+});
+
 
         server.setExecutor(null); // default executor
         server.start();
