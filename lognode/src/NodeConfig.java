@@ -16,6 +16,8 @@ public class NodeConfig {
         }
         return c;
     }
+public void setRole(String r){ this.role = r; }
+
 
     public boolean isLeader() { return "leader".equalsIgnoreCase(role); }
 }

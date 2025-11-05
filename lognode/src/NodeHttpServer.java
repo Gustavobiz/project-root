@@ -108,7 +108,7 @@ server.createContext("/replicate", new HttpHandler() {
 });
 
 
-// /append (apenas o LÍDER recebe do gateway; replica para followers)
+// /append apenas o lider recebe do gateway; replica para followers
 // body: {"command":"PUT a=1","followers":"http://h1:5001;http://h2:5002"}
 server.createContext("/append", new HttpHandler() {
     @Override public void handle(HttpExchange ex) {
@@ -185,6 +185,22 @@ server.createContext("/append", new HttpHandler() {
     }
 });
 
+//troca role em tempo de execução (teste)
+server.createContext("/becomeLeader", new HttpHandler() {
+    @Override public void handle(HttpExchange ex) {
+        try {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                sendJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            cfg.setRole("leader");  // implemente setRole no NodeConfig se não existir
+            sendJson(ex, 200, "{\"ok\":true,\"role\":\"leader\"}");
+            System.out.println(">>> PROMOTED to LEADER (port="+cfg.port+", id="+cfg.nodeId+")");
+        } catch (Exception e) {
+            sendJson(ex, 500, "{\"error\":\""+e.getMessage()+"\"}");
+        }
+    }
+});
 
         server.setExecutor(null); // default executor
         server.start();

@@ -192,13 +192,56 @@ if (target == null) {
                 }
             }
         });
+        // POST  Gateway manda o follower virar líder (teste)
+server.createContext("/admin/promote", new HttpHandler() {
+    @Override public void handle(HttpExchange ex) {
+        try {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                HttpUtils.sendJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            String q = ex.getRequestURI().getRawQuery();
+            String nodeId = null;
+            if (q != null) {
+                for (String p : q.split("&")) {
+                    String[] kv = p.split("=",2);
+                    if (kv.length==2 && "nodeId".equals(kv[0])) {
+                        nodeId = java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8);
+                        break;
+                    }
+                }
+            }
+            if (nodeId == null) {
+                HttpUtils.sendJson(ex, 400, "{\"error\":\"missing nodeId\"}");
+                return;
+            }
+
+            NodeInfo target = discovery.get(nodeId);
+            if (target == null || !"UP".equalsIgnoreCase(target.status)) {
+                HttpUtils.sendJson(ex, 404, "{\"error\":\"node not found or down\"}");
+                return;
+            }
+
+            // manda o nó virar líder
+            String url = "http://" + target.ip + ":" + target.port + "/becomeLeader";
+            String resp = GatewayNet.postJson(url, "{}", 1500);
+
+            // atualiza registro local para refletir papel novo
+            target.role = "leader";
+            HttpUtils.sendJson(ex, 200, "{\"ok\":true,\"nodeId\":\""+nodeId+"\",\"gatewayUpdate\":true,\"nodeResp\":"+resp+"}");
+        } catch (Exception e) {
+            HttpUtils.sendJson(ex, 500, "{\"error\":\""+e.getMessage()+"\"}");
+        }
+    }
+});
+
 
         server.setExecutor(null);
         server.start();
         System.out.println("Gateway HTTP on port " + port);
     }
 
-    // ========== utilitários locais (dentro da classe, fora de métodos) ==========
+    //utilitários locais (dentro da classe, fora de métodos
 
     private static String escape(String s) {
         return s.replace("\\","\\\\").replace("\"","\\\"");
