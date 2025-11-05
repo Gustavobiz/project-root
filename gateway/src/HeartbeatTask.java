@@ -1,13 +1,18 @@
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Collection;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.Scanner;
 
 public class HeartbeatTask implements Runnable {
     private final Discovery discovery;
     private final long intervalMs;
     private final int retries;
+
+    // backoff para evitar promover varias vezes seguidas
+    private long lastElectionTs = 0;
+    private final long electionBackoffMs = 3000; // 3s
 
     public HeartbeatTask(Discovery discovery, long intervalMs, int retries) {
         this.discovery = discovery;
@@ -19,31 +24,88 @@ public class HeartbeatTask implements Runnable {
     public void run() {
         while (true) {
             try {
-                Collection<NodeInfo> nodes = discovery.list(); // usa o list() do Discovery
-                for (NodeInfo n : nodes) {
+                // 1) Pingar /health de todos e atualizar status/term/commit
+                for (NodeInfo n : discovery.list()) {
                     Health h = pingHealth(n);
                     if (h.ok) {
-                        // atualiza usando o ID que já está cadastrado no Discovery
-                        discovery.updateFromHealth(
-                                n.nodeId,
+                        discovery.updateFromHealth(n.nodeId,
                                 h.status != null ? h.status : "UP",
                                 h.term,
-                                h.commitIndex
-                        );
+                                h.commitIndex);
                     } else {
                         discovery.markDown(n.nodeId);
                     }
                 }
+
+                // 2) Resolver cenarios especiais
+                resolveSplitBrain();       // se houver >1 líder UP, mantém 1 e rebaixa os outros
+                maybeElectLeader();        // se não houver nenhum líder UP, promove um follower
+
                 Thread.sleep(intervalMs);
             } catch (InterruptedException ie) {
-                return; // encerra a thread
-            } catch (Exception ignore) {
-                // continua o loop
-            }
+                return;
+            } catch (Exception ignore) { }
         }
     }
 
-    // Faz GET /health, tenta algumas vezes e retorna dados parseados
+    // -- Eleição automatica --
+    private void maybeElectLeader() {
+        List<NodeInfo> ups = discovery.list().stream()
+                .filter(n -> "UP".equalsIgnoreCase(n.status))
+                .collect(Collectors.toList());
+
+        // ja existe um líder UP?
+        boolean hasLeader = ups.stream().anyMatch(n -> "leader".equalsIgnoreCase(n.role));
+        if (hasLeader) return;
+
+        long now = System.currentTimeMillis();
+        if (now - lastElectionTs < electionBackoffMs) return; // respeita backoff
+
+        if (ups.isEmpty()) return; // ninguém UP
+
+        // escolha determinística: menor nodeId (lexicográfica) vira líder
+        ups.sort(Comparator.comparing(n -> n.nodeId));
+        NodeInfo cand = ups.get(0);
+
+        try {
+            String url = "http://" + cand.ip + ":" + cand.port + "/becomeLeader";
+            GatewayNet.postJson(url, "{}", 1500);
+            cand.role = "leader";
+            System.out.println("[election] Promoted " + cand.nodeId + " as LEADER");
+        } catch (Exception e) {
+            System.out.println("[election] Failed to promote " + cand.nodeId + ": " + e.getMessage());
+        }
+        lastElectionTs = now;
+    }
+
+    // Se houver mais de um líder UP, mantém 1 e rebaixa os demais
+    private void resolveSplitBrain() {
+        List<NodeInfo> leaders = discovery.list().stream()
+                .filter(n -> "UP".equalsIgnoreCase(n.status) && "leader".equalsIgnoreCase(n.role))
+                .collect(Collectors.toList());
+
+        if (leaders.size() <= 1) return;
+
+        // mantem o de menor nodeId como líder
+        leaders.sort(Comparator.comparing(n -> n.nodeId));
+        NodeInfo keeper = leaders.get(0);
+
+        for (int i = 1; i < leaders.size(); i++) {
+            NodeInfo demote = leaders.get(i);
+            try {
+                String url = "http://" + demote.ip + ":" + demote.port + "/becomeFollower";
+                GatewayNet.postJson(url, "{}", 1500);
+                demote.role = "follower";
+                System.out.println("[split-brain] Demoted " + demote.nodeId + " to FOLLOWER");
+            } catch (Exception e) {
+                System.out.println("[split-brain] Failed to demote " + demote.nodeId + ": " + e.getMessage());
+            }
+        }
+        // garante o papel do guardado
+        keeper.role = "leader";
+    }
+
+    // Ping /health 
     private Health pingHealth(NodeInfo n) {
         for (int i = 0; i < retries; i++) {
             try {
@@ -68,7 +130,7 @@ public class HeartbeatTask implements Runnable {
                     h.commitIndex = commit != null ? commit : 0;
                     return h;
                 }
-            } catch (Exception ignore) { /* tenta de novo */ }
+            } catch (Exception ignore) { }
         }
         return Health.down();
     }
