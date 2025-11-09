@@ -1,23 +1,35 @@
 public class NodeConfig {
-    public String role = "follower";           // leader | follower
-    public String transport = "http";          // http | udp | grpc (começamos por http)
-    public int port = 5000;                    // porta do nó
-    public String gateway = "http://localhost:8080";
-    public String nodeId = "nodeA";
+    public String nodeId;
+    public String ip = "localhost";   
+    public int port;
+    public String role;
+    public String gateway;
+    public String transport;
 
+    // construtor vazio
+    public NodeConfig() {}
+
+    //  metodo auxiliar para criar a partir dos argumentos da linha de comando
     public static NodeConfig fromArgs(String[] args) {
-        NodeConfig c = new NodeConfig();
+        NodeConfig cfg = new NodeConfig();
         for (String a : args) {
-            if (a.startsWith("--role="))      c.role = a.substring("--role=".length());
-            else if (a.startsWith("--port=")) c.port = Integer.parseInt(a.substring("--port=".length()));
-            else if (a.startsWith("--gateway=")) c.gateway = a.substring("--gateway=".length());
-            else if (a.startsWith("--transport=")) c.transport = a.substring("--transport=".length());
-            else if (a.startsWith("--nodeId=")) c.nodeId = a.substring("--nodeId=".length());
+            if (a.startsWith("--nodeId="))       cfg.nodeId = a.substring("--nodeId=".length());
+            else if (a.startsWith("--ip="))      cfg.ip = a.substring("--ip=".length());   // 👈 novo
+            else if (a.startsWith("--port="))    cfg.port = Integer.parseInt(a.substring("--port=".length()));
+            else if (a.startsWith("--role="))    cfg.role = a.substring("--role=".length());
+            else if (a.startsWith("--gateway=")) cfg.gateway = a.substring("--gateway=".length());
+            else if (a.startsWith("--transport=")) cfg.transport = a.substring("--transport=".length());
         }
-        return c;
-    }
-public void setRole(String r){ this.role = r; }
 
+        // valores padrão caso algum argumento falte
+        if (cfg.nodeId == null) cfg.nodeId = "node-" + System.currentTimeMillis();
+        if (cfg.ip == null) cfg.ip = "localhost";
+        if (cfg.role == null) cfg.role = "follower";
+        if (cfg.transport == null) cfg.transport = "http";
+        return cfg;
+    }
 
     public boolean isLeader() { return "leader".equalsIgnoreCase(role); }
+    public void setRole(String r) { this.role = r; }
 }
+

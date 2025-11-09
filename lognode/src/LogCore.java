@@ -6,7 +6,7 @@ public class LogCore {
     private final AtomicInteger commitIndex = new AtomicInteger(0);
     private final AtomicInteger term = new AtomicInteger(1);
 
-    // Estado do nó (chave/valor) aplicado somente após commit
+    // Estado do no (chave/valor) aplicado somente apos commit
     private final Map<String,String> kv = new HashMap<>();
 
     public synchronized int append(LogEntry e){

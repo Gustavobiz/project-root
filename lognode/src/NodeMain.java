@@ -8,14 +8,28 @@ public class NodeMain {
         http.start();
 // Auto-registro no Gateway
 try {
-    String json = String.format(
-      "{\"nodeId\":\"%s\",\"ip\":\"localhost\",\"port\":%d,\"role\":\"%s\",\"transport\":\"%s\"}",
-      cfg.nodeId, cfg.port, cfg.role, cfg.transport
-    );
-    String resp = NodeNet.postJson(cfg.gateway + "/register", json, 1500);
-    System.out.println("Register response: " + resp);
+    int tries = 0;
+    while (tries < 5) {
+        try {
+            String json = String.format(
+                "{\"nodeId\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"role\":\"%s\",\"transport\":\"%s\"}",
+                cfg.nodeId,            // use o nodeId passado
+                cfg.ip,                // 👈 usa o IP da linha de comando (NÃO fixo "localhost")
+                cfg.port,
+                cfg.role,
+                cfg.transport
+            );
+            String resp = NodeNet.postJson(cfg.gateway + "/register", json, 5000); // 👈 5s
+            System.out.println("Register response: " + resp);
+            break; // sucesso
+        } catch (Exception ex) {
+            tries++;
+            System.err.println("Register failed (" + tries + "): " + ex.getMessage());
+            try { Thread.sleep(1000L * tries); } catch (InterruptedException ignore) {}
+        }
+    }
 } catch (Exception e) {
-    System.err.println("Register failed: " + e.getMessage());
+    System.err.println("Register fatal: " + e.getMessage());
 }
 
         Thread.currentThread().join();
