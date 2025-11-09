@@ -3,9 +3,13 @@ public class NodeMain {
         NodeConfig cfg = NodeConfig.fromArgs(args);
         LogCore core = new LogCore();
 
-        // Inicia HTTP do nó
+        // Inicia HTTP do no
         NodeHttpServer http = new NodeHttpServer(cfg, core);
         http.start();
+        // Inicia servidores UDP e TCP (sempre; simples) — ou condicione por cfg.transport
+new Thread(new UdpServer(cfg, core), "udp-"+cfg.port).start();
+new Thread(new TcpServer(cfg, core), "tcp-"+cfg.port).start();
+
 // Auto-registro no Gateway
 try {
     int tries = 0;

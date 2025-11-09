@@ -107,71 +107,66 @@ server.createContext("/replicate", new HttpHandler() {
     }
 });
 
-
-// /append apenas o lider recebe do gateway; replica para followers
-// body: {"command":"PUT a=1","followers":"http://h1:5001;http://h2:5002"}
+// /append: apenas o lider recebe do gateway; replica para followers (HTTP/UDP/TCP)
 server.createContext("/append", new HttpHandler() {
     @Override public void handle(HttpExchange ex) {
         try {
             if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
                 safeMethodNotAllowed(ex); return;
             }
+
             String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String cmd = extractString(body, "command");
             String followers = extractString(body, "followers"); // ";" separados
 
-            if (!cfg.isLeader()) {
-                sendJson(ex, 409, "{\"error\":\"not leader\"}");
-                return;
-            }
-            if (cmd == null) {
-                sendJson(ex, 400, "{\"error\":\"missing command\"}");
-                return;
-            }
+            if (!cfg.isLeader()) { sendJson(ex, 409, "{\"error\":\"not leader\"}"); return; }
+            if (cmd == null)     { sendJson(ex, 400, "{\"error\":\"missing command\"}"); return; }
 
-            int idx;
-            int termNow;
+            int idx, termNow;
             synchronized (core) {
                 idx = core.nextIndex();
                 termNow = core.getTerm();
                 core.append(new LogEntry(idx, termNow, cmd));
             }
 
-            // replicar para seguidores
-            int followerAcks = 0;
-            int followersCount = 0;
+            // --- ÚNICO LOOP DE REPLICAÇÃO (HTTP/UDP/TCP) ---
+            int followerAcks = 0, followersCount = 0;
             if (followers != null && !followers.isBlank()) {
                 String[] arr = followers.split(";");
                 followersCount = arr.length;
+
+                String payload = String.format(
+                    "{\"index\":%d,\"term\":%d,\"command\":\"%s\",\"leaderCommit\":%d}",
+                    idx, termNow, escape(cmd), idx
+                );
+
                 for (String f : arr) {
                     f = f.trim();
                     if (f.isEmpty()) continue;
                     try {
-                        // envia também o leaderCommit = idx (para o follower aplicar no KV)
-                        String json = String.format(
-                            "{\"index\":%d,\"term\":%d,\"command\":\"%s\",\"leaderCommit\":%d}",
-                            idx, termNow, escape(cmd), idx
-                        );
-                        String url = f + "/replicate";
-                        String resp = NodeNet.postJson(url, json, 1500);
-                        if (resp.contains("\"success\":true")) {
-                            followerAcks++;
+                        boolean ok;
+                        if (f.startsWith("udp://")) {
+                            ok = UdpReplicator.sendAndAck(f, payload, 1000);
+                        } else if (f.startsWith("tcp://")) {
+                            ok = TcpReplicator.sendAndAck(f, payload, 1500);
+                        } else {
+                            // HTTP padrão: http://host:port/replicate
+                            String url = f + "/replicate";
+                            String resp = NodeNet.postJson(url, payload, 1500);
+                            ok = (resp != null && resp.contains("\"success\":true"));
                         }
-                    } catch (Exception ignore) { /* esse follower falhou */ }
+                        if (ok) followerAcks++;
+                    } catch (Exception ignore) { /* follower falhou */ }
                 }
             }
 
-            // maioria: total nós = 1 líder + followersCount
-            int totalNodes = 1 + followersCount;
-            int totalAcks = 1 + followerAcks;           // líder conta como ack
-            int majority = (totalNodes / 2) + 1;        // floor(n/2)+1
+            int totalNodes = 1 + followersCount;         // líder + followers
+            int totalAcks  = 1 + followerAcks;           // líder conta como ack
+            int majority   = (totalNodes / 2) + 1;
 
             boolean committed = totalAcks >= majority;
-
             if (committed) {
-                synchronized (core) {
-                    core.commitTo(idx); // aplica no KV do líder
-                }
+                synchronized (core) { core.commitTo(idx); } // aplica no KV do líder
             }
 
             String resp = String.format(
@@ -179,13 +174,15 @@ server.createContext("/append", new HttpHandler() {
                 idx, committed ? "true" : "false", totalAcks, majority
             );
             sendJson(ex, 200, resp);
+
         } catch (Exception e) {
             sendJson(ex, 500, "{\"error\":\""+e.getMessage()+"\"}");
         }
     }
 });
 
-//troca role em tempo de execução (teste)
+
+//troca role em tempo de execução 
 // POST /becomeLeader  promove este no a lider
 server.createContext("/becomeLeader", new HttpHandler() {
     @Override public void handle(HttpExchange ex) {
