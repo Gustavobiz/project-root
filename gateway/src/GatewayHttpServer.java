@@ -175,9 +175,14 @@ if (target == null) {
                         if ("follower".equalsIgnoreCase(n.role)) followers.add(n);
                     }
 
-                    String followersStr = followers.stream()
-                        .map(f -> "http://" + f.ip + ":" + f.port)
-                        .collect(Collectors.joining(";"));
+                   String followersStr = followers.stream()
+    .map(f -> {
+        String scheme = "http";
+        if ("udp".equalsIgnoreCase(f.transport)) scheme = "udp";
+        else if ("tcp".equalsIgnoreCase(f.transport)) scheme = "tcp";
+        return scheme + "://" + f.ip + ":" + f.port;
+    })
+    .collect(Collectors.joining(";"));
 
                     String payload = String.format(
                         "{\"command\":\"%s\",\"followers\":\"%s\"}",

@@ -3,7 +3,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.Scanner;
 
 public class HeartbeatTask implements Runnable {
     private final Discovery discovery;
@@ -20,33 +19,26 @@ public class HeartbeatTask implements Runnable {
         this.retries = retries;
     }
 
-    @Override
-    public void run() {
-        while (true) {
-            try {
-                // 1) Pingar /health de todos e atualizar status/term/commit
-                for (NodeInfo n : discovery.list()) {
-                    Health h = pingHealth(n);
-                    if (h.ok) {
-                        discovery.updateFromHealth(n.nodeId,
-                                h.status != null ? h.status : "UP",
-                                h.term,
-                                h.commitIndex);
-                    } else {
-                        discovery.markDown(n.nodeId);
-                    }
-                }
+   @Override
+public void run() {
+    while (true) {
+        try {
+            // 1) Atualiza status via /health
+            for (NodeInfo n : discovery.list()) {
+                Health h = pingHealth(n);
+                if (h.ok) discovery.updateFromHealth(n.nodeId, h.status != null ? h.status : "UP", h.term, h.commitIndex);
+                else discovery.markDown(n.nodeId);
+            }
 
-                // 2) Resolver cenarios especiais
-                resolveSplitBrain();       // se houver >1 líder UP, mantém 1 e rebaixa os outros
-                maybeElectLeader();        // se não houver nenhum líder UP, promove um follower
+            resolveSplitBrain();   // 1º: se há >1 líder, mantém só o determinístico
+            maybeElectLeader();    // 2º: se não há líder UP, promove 1
 
-                Thread.sleep(intervalMs);
-            } catch (InterruptedException ie) {
-                return;
-            } catch (Exception ignore) { }
-        }
+            Thread.sleep(intervalMs);
+        } catch (InterruptedException ie) {
+            return;
+        } catch (Exception ignore) {}
     }
+}
 
     // -- Eleição automatica --
     private void maybeElectLeader() {
