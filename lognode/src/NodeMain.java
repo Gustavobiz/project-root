@@ -6,11 +6,11 @@ public class NodeMain {
         // Inicia HTTP do no
         NodeHttpServer http = new NodeHttpServer(cfg, core);
         http.start();
-        // Inicia servidores UDP e TCP (sempre; simples) — ou condicione por cfg.transport
+        // inicia servidores udp e tcp
 new Thread(new UdpServer(cfg, core), "udp-"+cfg.port).start();
 new Thread(new TcpServer(cfg, core), "tcp-"+cfg.port).start();
 
-// Auto-registro no Gateway
+// Autoregistro no Gateway
 try {
     int tries = 0;
     while (tries < 5) {
