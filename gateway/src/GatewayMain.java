@@ -22,7 +22,7 @@ public class GatewayMain {
         GatewayHttpServer http = new GatewayHttpServer(discovery, httpPort);
         http.start();
 
-        // Proxies TCP/UDP que encaminham para POST /log/append do próprio gateway
+        // proxies TCP/UDP que encaminham para POST /log/append do proprio gateway
         new Thread(new GatewayTcpServer(httpPort), "gateway-tcp-" + tcpPort) .start();
         new Thread(new GatewayUdpServer(httpPort), "gateway-udp-" + udpPort) .start();
 
